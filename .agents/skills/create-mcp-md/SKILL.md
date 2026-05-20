@@ -17,9 +17,11 @@ directory. The output follows the same structure as `mcp/Coding/tokensave/mcp.md
 ### 1. Read the mcp.json
 
 Read the `mcp.json` in the target directory. If the file is missing, malformed, or cannot be parsed, report an error to the user and stop. Extract:
-- Server name (key under `mcpServers`)
-- `command` and `args`
-- Any env vars if present
+- Server name (key under `mcpServers` or `servers`)
+- `command` and `args` (stdio servers) or `type` and `url` (HTTP servers)
+- Any `env` vars if present
+- Any `headers` if present (HTTP servers)
+- Top-level `inputs` array if present — each entry has `type`, `id`, `description`, and optionally `password`
 
 ### 2. Gather documentation
 
@@ -45,6 +47,15 @@ args:
   - <arg1>
   - <arg2>
   ...
+# For HTTP servers, use type/url instead of command/args:
+# type: http
+# url: https://...
+# Include inputs only when the mcp.json has an "inputs" array:
+inputs:
+  - type: <promptString|promptPassword>
+    id: <input-id>
+    description: <Human-readable prompt shown to the user>
+    password: <true if the value is secret>
 skills:
   - <matching-skill-name-if-one-exists>
 ---
@@ -85,10 +96,16 @@ When constraints conflict, apply them in this order: **accuracy first** (match `
 ### Frontmatter accuracy (highest priority)
 
 - `command` and `args` in the frontmatter must exactly match `mcp.json` — copy them verbatim.
+- For HTTP servers (`type: http`), use `type` and `url` instead of `command`/`args`.
 - If `args` contain a placeholder like `/path/to/your/project`, keep it as-is and add a note
   in the body explaining which argument the user must update.
 - Only add a `skills:` entry if a matching skill already exists in `skills/` — do not invent
   skill names.
+- If `mcp.json` has an `inputs` array, copy every entry verbatim into `inputs:` in the
+  frontmatter. Do not add `inputs:` when the array is absent.
+- In the **Setup** section, explain each input: what value the user must supply and where to
+  obtain it. For `password: true` inputs, note that the host will prompt securely and the
+  value will not be stored in plain text.
 
 ### Body quality
 
