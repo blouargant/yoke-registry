@@ -44,6 +44,9 @@ brew install aovestdipaperino/tap/tokensave
 cargo install tokensave
 ```
 
+**Direct binary download (if Homebrew and Cargo are not available):**
+Download the latest release binary from the [tokensave releases page](https://github.com/aovestdipaperino/tokensave/releases), place it in a directory on `$PATH`, and mark it executable (`chmod +x tokensave`).
+
 Verify after install:
 ```bash
 tokensave --help
@@ -90,6 +93,8 @@ cd /path/to/project
 tokensave init
 ```
 
+If `tokensave init` fails, check for permission issues or unsupported file types in the project directory. Run `tokensave --help` to confirm the CLI is functional.
+
 This creates `.tokensave/` and indexes all supported files (15 languages). Check what was indexed:
 
 ```bash
@@ -102,6 +107,8 @@ After making code changes, keep the graph current:
 tokensave sync            # incremental — only changed files
 tokensave sync --force    # full re-index
 ```
+
+If `tokensave sync` does not update the graph as expected, verify you are in the project root, ensure no files are locked by another process, and run `tokensave status` to confirm the indexed file count.
 
 The MCP server reads from the database on each request, so synced changes are available
 immediately — no restart needed.
@@ -173,7 +180,8 @@ See the [tokensave README](https://github.com/aovestdipaperino/tokensave) for th
 1. **Always start with `tokensave_context`** for any code exploration task. Pass the user's
    question verbatim as the `task` argument. Use `exclude_node_ids` from each response in the
    next call to avoid repeating nodes.
-2. **Call budget**: respect the per-tool call budget in the tool descriptions. For
+2. **Call budget**: Each tool has a maximum number of calls allowed per session, as specified in
+   its description — do not exceed this limit. For
    `tokensave_context` this is typically 4 calls per session.
 3. **Do not read files you could graph instead.** If `tokensave_context` returns source
    snippets, treat those as the authoritative code — do not re-read the same file.
