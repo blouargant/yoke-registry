@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tokensave": {
+      "command": "tokensave",
+      "args": ["serve", "--path", "/path/to/your/project"]
+    }
+  }
+}
