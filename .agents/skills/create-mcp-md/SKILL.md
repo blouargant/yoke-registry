@@ -50,6 +50,8 @@ args:
 # For HTTP servers, use type/url instead of command/args:
 # type: http
 # url: https://...
+# headers:
+#   Authorization: Bearer ${input:<token-id>}
 # Include inputs only when the mcp.json has an "inputs" array:
 inputs:
   - type: <promptString|promptPassword>
@@ -96,7 +98,8 @@ When constraints conflict, apply them in this order: **accuracy first** (match `
 ### Frontmatter accuracy (highest priority)
 
 - `command` and `args` in the frontmatter must exactly match `mcp.json` — copy them verbatim.
-- For HTTP servers (`type: http`), use `type` and `url` instead of `command`/`args`.
+- The top-level key holding servers is either `servers` (VS Code / Cursor style) or `mcpServers` (Anthropic / Claude Desktop style) — both are equivalent; extract the server name and config from whichever key is present.
+- For HTTP servers (`type: http`), use `type` and `url` instead of `command`/`args`. If the server config has a `headers` map, copy it verbatim into the frontmatter under `headers:`.
 - If `args` contain a placeholder like `/path/to/your/project`, keep it as-is and add a note
   in the body explaining which argument the user must update.
 - Only add a `skills:` entry if a matching skill already exists in `skills/` — do not invent
