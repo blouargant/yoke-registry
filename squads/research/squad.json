@@ -1,0 +1,6 @@
+{
+  "name": "research",
+  "description": "Web-research focus: leader delegates to web_agent and summariser.",
+  "leader": "leader",
+  "members": ["web_agent", "summariser"]
+}
