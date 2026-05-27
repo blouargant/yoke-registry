@@ -56,6 +56,10 @@ are **recommended**.
 
 Reference: [Kubernetes recommended labels](https://kubernetes.io/docs/concepts/overview/working-with-objects/common-labels/).
 
+For raw manifests with no Helm release, set `app.kubernetes.io/instance` to
+the same value as `app.kubernetes.io/name` or ask the user for an environment
+identifier (e.g. `orders-api-prod`).
+
 **Rule of thumb:** if the debug skill team can write `selector.labels: {app.kubernetes.io/name: <app>}` and have it actually match, the chart is ready.
 
 ## Where the labels must appear
@@ -82,13 +86,17 @@ a fully labelled Deployment.
 Repeating the same eight lines of labels in every template is the path to
 drift. Define two named templates once and reuse them everywhere:
 
-- **`<chart>.labels`** — the full set (for `metadata.labels` on workloads
-  and Services).
+- **`<chart>.labels`** — the full set (for `metadata.labels` on workloads,
+  Services, and pod templates).
 - **`<chart>.selectorLabels`** — the immutable subset (for
-  `spec.selector.matchLabels` and `spec.template.metadata.labels`).
+  `spec.selector.matchLabels` only; do **not** use on pod templates — use
+  the full `<chart>.labels` helper there instead).
 
 A drop-in starter lives at [assets/_helpers.tpl](assets/_helpers.tpl);
 adapt the chart name to match your `Chart.yaml`.
+
+For umbrella charts, define helpers in each sub-chart using that sub-chart's
+name; do not share a single helper across sub-charts.
 
 ## Folder layout for the ConfigMaps
 
@@ -119,9 +127,17 @@ operator-facing manifests live.
    `DaemonSet`, `Job`, `CronJob`). For each:
    - Does `metadata.labels` include `app.kubernetes.io/name` and
      `app.kubernetes.io/instance`?
-   - Does `spec.template.metadata.labels` include the **same** subset?
+   - Does `spec.template.metadata.labels` include the **full canonical label
+     set** (and therefore is a superset of `spec.selector.matchLabels`)?
    - Does `spec.selector.matchLabels` use only **immutable** labels?
-   - Where the answer is no, prepare an edit.
+   - **For CronJob**, the pod template lives at
+     `spec.jobTemplate.spec.template.metadata.labels`; audit that path
+     instead. For Operator-managed CRDs, labels must be set in the CR
+     spec — not on auto-generated pods.
+   - **2d.** Before proposing any edit to `spec.selector.matchLabels` on an
+     existing Deployment, STOP and apply the Hard Rule about immutability
+     — emit `blocked` instead.
+   - Where the other label-location answers are no, prepare an edit.
 3. **Check for an existing `_helpers.tpl`.**
    - If it defines `<chart>.labels` and `<chart>.selectorLabels`, reuse them.
    - If not, propose adding the helpers from
@@ -137,19 +153,28 @@ operator-facing manifests live.
        metadata:
          labels: {{- include "<chart>.labels" . | nindent 8 }}
    ```
-5. **Create the debug-skills folder** at `templates/debug-skills/` (or the
-   manifest-equivalent location) so authors have an obvious place to drop
-   ConfigMaps. Empty `.gitkeep` is fine for v0.
+5. **Create the debug-skills folder** at `templates/debug-skills/` (or, for
+   raw manifests, at `<manifest-root>/debug-skills/`, e.g.
+   `base/debug-skills/` for Kustomize layouts) so authors have an obvious
+   place to drop ConfigMaps. Empty `.gitkeep` is fine for v0.
 6. **Verify with a `helm template` dry run** (or `kubectl apply --dry-run=client`
    for raw manifests). Confirm:
    - All workloads render with the canonical labels on `metadata.labels`
      and `spec.template.metadata.labels`.
    - `matchLabels` only uses fields that won't change between releases.
+   If `helm template` fails due to missing values, supply a minimal `--set`
+   or `-f values-debug.yaml` and re-run; if it still fails, emit
+   `needs-input` and report the rendering error.
 7. **Hand off to [k8s-debug-skill-author](../k8s-debug-skill-author/SKILL.md).**
    The chart is now ready; authors can start writing ConfigMaps.
 
 ## Hard rules
 
+- **Preserve non-canonical labels during migration.** If existing
+  `matchLabels` use non-canonical keys (e.g., `app: orders-api`), keep them
+  in `matchLabels` and the pod template AND add the canonical labels
+  alongside. Do not remove the legacy keys — removing them changes the
+  immutable selector.
 - **Never change `spec.selector.matchLabels` on an existing Deployment.**
   It is immutable. If the current value is wrong, you must delete and
   recreate the Deployment — flag this to the user and let them decide
