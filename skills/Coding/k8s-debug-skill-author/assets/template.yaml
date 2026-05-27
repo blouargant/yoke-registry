@@ -1,0 +1,62 @@
+# Debug-skill ConfigMap starter.
+#
+# Save as <chart>/templates/debug-skills/<app>-<short-cause>.yaml (Helm)
+# or <kustomize-base>/debug-skills/<app>-<short-cause>.yaml (Kustomize).
+#
+# The yoke.dev/debug-skill=true label is the only registration step.
+# At runtime, the k8s-debug-skills triage skill discovers this ConfigMap
+# by that label and reads data.meta to decide whether it applies.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: REPLACE-app-short-cause
+  namespace: REPLACE-app-namespace
+  labels:
+    yoke.dev/debug-skill: "true"
+    # Keep the app label too — useful for kubectl filtering, optional for discovery.
+    app.kubernetes.io/name: REPLACE-app
+data:
+  # ---------------------------------------------------------------------------
+  # meta — the discovery hint. Loaded for every candidate during Phase 1
+  # of the k8s-debug-skills triage procedure. Keep it small.
+  # ---------------------------------------------------------------------------
+  meta: |
+    description: one-line summary of when this skill applies
+
+    # Hard filter on the failing pod's labels. Must include `app:`.
+    selector:
+      app: REPLACE-app
+      # component: api          # optional, narrows further
+
+    # Optional. Drop the skill if the pod's image tag is outside this range.
+    # applies_to: ">=2.4.0 <3.0.0"
+
+    # OR'd. At least one must fire (in addition to selector passing) for the
+    # skill to be considered. Prefer specific patterns over generic words.
+    matchers:
+      - log: "REPLACE specific log fragment, >= 10 chars, regex-friendly"
+      # - log: "another representative line"
+      # - event: BackOff             # kubernetes event reason
+      # - exit_code: 137             # container exit code
+      # - container: REPLACE-sidecar # restrict to a specific container
+
+  # ---------------------------------------------------------------------------
+  # body — the playbook. Loaded only when this skill is selected. Markdown.
+  # Action-oriented. Never instruct the LLM to run mutating commands.
+  # ---------------------------------------------------------------------------
+  body: |
+    # REPLACE-app: REPLACE-one-line-failure-summary
+
+    REPLACE: 1–2 sentences explaining what this error means in the context
+    of this specific application — not the generic kubernetes-level meaning.
+
+    Likely causes, in order:
+
+    1. REPLACE-most-likely-cause
+    2. REPLACE-second-cause
+    3. REPLACE-third-cause
+
+    Safe next step: REPLACE with a single read-only diagnostic (a `kubectl get`,
+    a log tail, a health endpoint check). Never a `kubectl delete`, `apply`,
+    `patch`, `scale`, `rollout`, or any mutating command.

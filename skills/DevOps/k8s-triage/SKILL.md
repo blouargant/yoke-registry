@@ -44,6 +44,10 @@ lines, or the same pod restarts 3+ times within 30 minutes), load
    - network (service, dns, network policy)
    - permission (RBAC, PSP / PSA)
    - application (crashes after startup)
+
+   If the classification is `application` or `configuration`, load
+   `k8s-debug-skills` before proposing a next action — it pulls
+   team-shipped debug ConfigMaps that may explain the specific error.
 5. **Propose ONE next action** — never a multi-step mitigation in the
    first message. Always a dry-run first when possible (`--dry-run=server`).
 
