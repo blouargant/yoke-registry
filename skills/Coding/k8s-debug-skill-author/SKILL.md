@@ -64,8 +64,11 @@ doesn't know, stop and ask them to find out.
    - **Image** — a regex matching the container image (e.g.
      `myregistry/orders-api(:|$)`). More stable than labels; prefer
      adding it whenever the user knows the image.
-   At least one of `labels` or `image` must end up in the selector. Empty
-   selectors are rejected.
+   At least one of `labels` (non-empty) or `image` must end up in the
+   selector. An empty `labels` map without `image` is equivalent to an
+   empty selector and is rejected. Selectors are evaluated within the
+   namespace where the ConfigMap is deployed. If the app runs in multiple
+   namespaces with different failure modes, author one CM per namespace.
 2. **Version constraint** *(optional)* — if the failure only occurs in certain
    image versions, the semver range (e.g. `">=2.4.0 <3.0.0"`).
 3. **Error signatures** — at least one of, ideally two:
@@ -79,6 +82,10 @@ doesn't know, stop and ask them to find out.
    signatures up front, then apply the grouping rule above to decide
    whether they fit in one CM (same diagnosis family) or need separate
    ones (different families).
+
+   **Before encoding any log line**, scan for secrets (tokens, passwords,
+   bearer headers, email addresses, IPs). If found, redact and ask the
+   user to confirm the redacted form still uniquely identifies the error.
 4. **Diagnosis** — the 1–3 most likely causes per failure variant, in
    order of likelihood. One sentence each. If multiple variants are
    grouped into one CM, gather a separate cause list per variant.
@@ -124,6 +131,10 @@ absolute:
   triggers fires. **For larger apps**, split along the family axis above
   before the CM count gets unwieldy.
 
+> **Precedence**: Split rules take precedence over merge rules. Always
+> split if any of the four split conditions fire, regardless of app size.
+> The small-app guidance only applies when no split condition triggers.
+
 When a CM covers multiple variants in the same family, the `body` MUST
 have a short section per variant so the LLM can pick the relevant
 diagnosis at runtime:
@@ -152,9 +163,11 @@ runtime correlates which matcher fired with which body section by name.
 
 ## Authoring rules
 
-- **Matchers must be specific.** Reject patterns shorter than ~10 characters
-  or single common words (`"error"`, `"fail"`, `"timeout"`). Suggest a tighter
-  pattern that includes the surrounding context.
+- **Matchers must be specific.** Reject any regex whose literal portion is
+  fewer than 10 characters, or that matches one of this list: `error`,
+  `fail`, `failed`, `timeout`, `exception`, `panic`, `crash`, `denied`,
+  `refused`, `unavailable`. Suggest a tighter pattern that includes the
+  surrounding context.
 - **Selector must identify the app.** At least one of `labels` or `image`
   must be present and non-empty. An empty selector (or one with neither
   block) would match every pod in scope and is rejected. Prefer
@@ -166,10 +179,14 @@ runtime correlates which matcher fired with which body section by name.
   legitimate hits.
 - **Body is markdown, action-oriented.** Lead with what the error means in
   this app's context, then list causes, then end with the safe next step.
-  Aim for under 40 lines.
+  Body must not exceed 40 non-blank lines. If it would, split into
+  multiple CMs per the grouping rule.
 - **Body never instructs command execution.** The triage skill quotes
   commands and asks the user before running them. A body that says
-  "run `kubectl delete pod X`" is a bug.
+  "run `kubectl delete pod X`" is a bug. If the user pushes back on
+  the read-only constraint, explain that remediation belongs in a
+  runbook, not a debug skill, and refuse with output `blocked`. Do not
+  draft mutating next steps even at user request.
 
 ## Anti-patterns to refuse outright
 
@@ -242,25 +259,40 @@ runtime correlates which matcher fired with which body section by name.
    `data.meta` (the LLM uses this correspondence to pick the right
    section at runtime).
 
-5. **Lint against the contract** before showing the result:
+5. **Lint against the contract** in two passes:
+
+   **Pass A — structural/syntactic checks** (fix all before proceeding):
    - `metadata.labels["yoke.dev/debug-skill"]` is `"true"`.
    - `data.meta` parses as YAML; required keys (`description`, `selector`,
      `matchers`) are present.
    - `selector` has at least one of `labels` (non-empty map) or `image`
      (non-empty string). Warn if `labels` uses plain `app:` without the
      canonical `app.kubernetes.io/name` form.
-   - `selector.image`, if present, is a syntactically valid regex.
+   - `selector.image`, if present, is a syntactically valid regex that
+     contains at least one literal path segment (not solely metacharacters
+     such as `.*` or `.+`). Reject regexes that could match more than one
+     registry/repo.
    - Every matcher is one of `log`, `event`, `exit_code`, `container`.
-   - Each `log:` regex is at least 10 chars and not a single common word.
+   - Each `log:` regex is at least 10 chars and not one of: `error`, `fail`,
+     `failed`, `timeout`, `exception`, `panic`, `crash`, `denied`,
+     `refused`, `unavailable`.
    - `data.body` does not contain shell commands prefixed with verbs that
      mutate state (`apply`, `delete`, `patch`, `edit`, `scale`, `rollout`,
      `drain`, `cordon`, `replace`).
-   - **Grouping coherence**: if the CM has more than 3 matchers, the body
-     must be the multi-variant form (each variant section corresponding
-     to one or more matchers). If the body is single-variant but the
-     matchers describe materially different errors, refuse and propose
-     splitting into multiple CMs along the family axis.
-6. **Show the YAML** in a fenced block. State explicitly: "save this as
+
+   **Pass B — semantic checks** (output `blocked` if either fails):
+   - **Grouping coherence**: if the matchers cover materially different
+     log/event patterns that map to different causes or next steps, the
+     body must be the multi-variant form. Matcher count alone is not the
+     trigger. If the body is single-variant but the matchers describe
+     materially different errors, refuse and propose splitting into
+     multiple CMs along the family axis.
+   - **Variant correspondence**: every body variant tag obviously
+     corresponds to one or more matchers in `data.meta`.
+6. **Show the YAML** in a fenced block. Set `metadata.name` to match the
+   filename stem (e.g. `orders-api-postgres`). Leave `metadata.namespace`
+   unset (templated via Helm) or set it to the app's release namespace;
+   document which. State explicitly: "save this as
    `<chart-path>/debug-skills/<name>.yaml` and commit it." Do not run
    `kubectl apply`.
 7. **Suggest a filename**:
@@ -268,6 +300,13 @@ runtime correlates which matcher fired with which body section by name.
      `orders-api-db-timeout.yaml`.
    - Multi-variant CM (family-grouped): `<app>-<family>.yaml`, e.g.
      `orders-api-postgres.yaml` or `orders-api-payments.yaml`.
+
+## Updating an existing debug skill
+
+If the user is modifying an existing skill, ask for the current YAML,
+then apply the same elicitation and lint steps to the diff. Preserve
+the existing `metadata.name` and re-check grouping coherence after
+the addition.
 
 ## File placement guidance
 
