@@ -11,9 +11,9 @@ will commit — never `kubectl apply` to a live cluster.
 User intent: $ARGUMENTS
 
 If the user intent above is empty, start by asking: which application,
-which failure(s) to encode (one symptom per error, with a real log line
-or event reason where possible), and whether they want to cover one
-specific error or a family of related errors.
+where its source lives (repo path / package / service directory), and
+whether they want the skill to cover the full set of errors the code
+can emit (the default) or a specific incident only (fallback).
 
 ## Workflow
 
@@ -42,20 +42,40 @@ Apply the proposed edits once the user agrees. Move on only when the
 chart is debug-skill ready — otherwise the skill will never match the
 running pods.
 
-### Phase 2 — Author the ConfigMap
+### Phase 2 — Author the ConfigMap(s)
 
 Invoke the **k8s-debug-skill-author** skill. It will:
 
-- Elicit the five required inputs (pod identity, optional version
-  constraint, error signatures, diagnosis, safe next step).
-- Apply the grouping rule: if the user described multiple errors,
-  decide whether they share a diagnosis family (one CM, multi-variant
-  body) or need separate CMs.
-- Draft `data.meta` (selector + matchers + applies_to) and `data.body`
-  (single-variant or multi-variant markdown).
-- Lint the result against the contract.
-- Suggest a filename: `<app>-<short-cause>.yaml` for a single-variant
-  CM, `<app>-<family>.yaml` for a family CM.
+- Gather the up-front inputs: pod identity (labels and/or image),
+  source location and scope, optional version constraint.
+- **Sweep the scoped source** for error-emitting sites (log.error,
+  panic, throw, raised exceptions, structured-error returns) in
+  whatever language(s) the app uses. For each site it captures the
+  static log prefix usable as a matcher and the surrounding code
+  context for diagnosis inference.
+- **Cluster sites into diagnosis families** and decide how many CMs to
+  produce — one per family, with a multi-variant body when a family
+  has several distinct error variants.
+- For each variant, *infer* the operator-facing diagnosis from code
+  context (function name, guarding conditional, nearby comments,
+  callers) and present it for a yes/no check, falling back to an
+  open-ended question only when inference is weak.
+- Draft `data.meta` (selector + matchers annotated with
+  `# from <file:line>` provenance + applies_to) and `data.body`
+  (multi-variant markdown with `Source:` lines per variant).
+- Lint the result, including verifying that every code-derived matcher
+  cites a real source location.
+- Report a "needs-prefix" list at the end: log sites in the source
+  that have no static prefix and are therefore unmatchable; these are
+  observability gaps the user can fix in a follow-up code change.
+- Suggest filenames: `<app>-<short-cause>.yaml` for single-variant CMs,
+  `<app>-<family>.yaml` for family CMs.
+
+The skill also supports an **incident-driven fallback**: if source is
+unavailable or the user wants to encode a specific environmental
+failure (e.g. a missing secret), the skill accepts user-supplied
+signatures directly. Matchers from incident mode carry
+`# from incident` instead of a source citation.
 
 Place the file(s) at `<chart-root>/templates/debug-skills/<name>.yaml`
 for a Helm chart, or the manifest-equivalent location. Template the
