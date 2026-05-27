@@ -8,11 +8,15 @@ metadata:
 
 # Kubernetes Debug-Skill Author
 
-This skill walks a developer through writing one debug-skill ConfigMap that
-matches the contract documented in
-[skills/DevOps/k8s-debug-skills/SKILL.md](../../DevOps/k8s-debug-skills/SKILL.md).
-The output is a YAML file the user saves and commits with their chart or
-manifests; this skill does **not** apply anything to a cluster.
+This skill walks a developer through writing one debug-skill ConfigMap.
+The full contract is documented inline below — no other skill needs to be
+loaded. The output is a YAML file the user saves and commits with their
+chart or manifests; this skill does **not** apply anything to a cluster.
+
+> The runtime half — the triage agent that *consumes* these ConfigMaps at
+> incident time — is a separate concern owned by a different agent
+> profile (typically a DevOps / SRE harness). A coding agent does not
+> need to load or read it to author skills correctly.
 
 The companion template at [assets/template.yaml](assets/template.yaml) is the
 canonical starter — read it once, then fill it in with the user's inputs.
@@ -70,19 +74,84 @@ doesn't know, stop and ask them to find out.
      (`BackOff`, `Unhealthy`, `FailedMount`, …),
    - the container exit code if non-zero,
    - the container name if the failure is specific to a sidecar.
-4. **Diagnosis** — the 1–3 most likely causes in order of likelihood. One
-   sentence each.
-5. **Safe next step** — a single read-only diagnostic the on-call should run
-   first. Never a mutating command.
+
+   **If the user has more than one error to encode**, gather all
+   signatures up front, then apply the grouping rule above to decide
+   whether they fit in one CM (same diagnosis family) or need separate
+   ones (different families).
+4. **Diagnosis** — the 1–3 most likely causes per failure variant, in
+   order of likelihood. One sentence each. If multiple variants are
+   grouped into one CM, gather a separate cause list per variant.
+5. **Safe next step** — a single read-only diagnostic per variant.
+   Never a mutating command. Variants that would have *different* next
+   steps are a signal they don't belong in the same CM.
 
 If the user can only provide vague answers ("it just breaks", "some kind of
 error"), stop and ask them to grab a concrete log line or event before
 continuing. A vague skill is worse than no skill.
 
+## Grouping: when to merge errors, when to split
+
+Each ConfigMap costs something — it's another row in `kubectl get cm`, another
+candidate the triage skill loads during Phase 1, another file in the chart.
+At the same time, bundling unrelated errors into one CM loosens the selector
+and the matchers until the skill becomes noise. The rule is graded, not
+absolute:
+
+- **Default: one ConfigMap per *diagnosis family*, not per error.** A
+  diagnosis family is a set of errors that share the same likely causes
+  and the same safe next step. "Postgres connectivity errors" is one
+  family (whether the log says `connection refused` or `i/o timeout`,
+  the diagnosis is the same). "Postgres connectivity" and "Stripe auth"
+  are two different families.
+- **Group by kind / source / explanation.** Errors belong in the same CM
+  when they share at least two of:
+  - **kind** — the failure category (connectivity, auth, schema, resource
+    exhaustion, …),
+  - **source** — the upstream or component involved (postgres, stripe,
+    redis, the message bus, …),
+  - **explanation** — the body's diagnosis and next step would be
+    substantively the same.
+- **Split when** any of these is true:
+  - The likely causes for two errors are different.
+  - The safe next step for two errors is different.
+  - The body would need to exceed ~40 lines to cover both clearly.
+  - Selector or matchers would need to broaden in a way that loses
+    precision (e.g. a single matcher pattern can no longer describe
+    every grouped error).
+- **For small apps with few known failures** (say, under five), one CM
+  per app is often the right answer; split only when one of the above
+  triggers fires. **For larger apps**, split along the family axis above
+  before the CM count gets unwieldy.
+
+When a CM covers multiple variants in the same family, the `body` MUST
+have a short section per variant so the LLM can pick the relevant
+diagnosis at runtime:
+
+```markdown
+# <app>: <family one-liner>
+
+<what this family of errors means in this app's context>
+
+## Variant: <short tag, e.g. "connection-refused">
+
+Triggered when log matches: `<pattern>`
+
+Likely causes:
+1. <cause>
+2. <cause>
+
+Safe next step: <read-only diagnostic>
+
+## Variant: <short tag, e.g. "i-o-timeout">
+...
+```
+
+The matcher list in `data.meta` stays a single flat list; the LLM at
+runtime correlates which matcher fired with which body section by name.
+
 ## Authoring rules
 
-- **One ConfigMap = one failure mode.** If the user describes two unrelated
-  failures, produce two ConfigMaps, not one with broad matchers.
 - **Matchers must be specific.** Reject patterns shorter than ~10 characters
   or single common words (`"error"`, `"fail"`, `"timeout"`). Suggest a tighter
   pattern that includes the surrounding context.
@@ -128,7 +197,10 @@ continuing. A vague skill is worse than no skill.
    - `applies_to` only if relevant.
    - `matchers` list — convert each error signature to the right matcher
      kind (`log`, `event`, `exit_code`, `container`).
-4. **Draft `data.body`** — markdown, in this exact shape:
+4. **Draft `data.body`** — markdown.
+
+   **Single-variant CM** (one error, or all errors share a single
+   diagnosis):
 
    ```markdown
    # <app>: <one-line failure summary>
@@ -144,6 +216,32 @@ continuing. A vague skill is worse than no skill.
    Safe next step: <single read-only command or check>
    ```
 
+   **Multi-variant CM** (errors in the same family, distinct diagnoses):
+
+   ```markdown
+   # <app>: <family one-liner>
+
+   <what this family of errors means in this app's context>
+
+   ## Variant: <short tag matching a matcher's intent>
+
+   Triggered when log matches: `<pattern>` (or event: `<reason>`, etc.)
+
+   Likely causes:
+   1. <cause>
+   2. <cause>
+
+   Safe next step: <read-only diagnostic>
+
+   ## Variant: <next tag>
+   ...
+   ```
+
+   In the multi-variant form, the variant tags should be short
+   kebab-case strings that obviously correspond to the matchers in
+   `data.meta` (the LLM uses this correspondence to pick the right
+   section at runtime).
+
 5. **Lint against the contract** before showing the result:
    - `metadata.labels["yoke.dev/debug-skill"]` is `"true"`.
    - `data.meta` parses as YAML; required keys (`description`, `selector`,
@@ -157,11 +255,19 @@ continuing. A vague skill is worse than no skill.
    - `data.body` does not contain shell commands prefixed with verbs that
      mutate state (`apply`, `delete`, `patch`, `edit`, `scale`, `rollout`,
      `drain`, `cordon`, `replace`).
+   - **Grouping coherence**: if the CM has more than 3 matchers, the body
+     must be the multi-variant form (each variant section corresponding
+     to one or more matchers). If the body is single-variant but the
+     matchers describe materially different errors, refuse and propose
+     splitting into multiple CMs along the family axis.
 6. **Show the YAML** in a fenced block. State explicitly: "save this as
    `<chart-path>/debug-skills/<name>.yaml` and commit it." Do not run
    `kubectl apply`.
-7. **Suggest a filename** based on the failure: `<app>-<short-cause>.yaml`,
-   kebab-case, e.g. `orders-api-db-timeout.yaml`.
+7. **Suggest a filename**:
+   - Single-variant CM: `<app>-<short-cause>.yaml`, e.g.
+     `orders-api-db-timeout.yaml`.
+   - Multi-variant CM (family-grouped): `<app>-<family>.yaml`, e.g.
+     `orders-api-postgres.yaml` or `orders-api-payments.yaml`.
 
 ## File placement guidance
 

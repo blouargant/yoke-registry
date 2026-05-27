@@ -1,11 +1,19 @@
 # Debug-skill ConfigMap starter.
 #
-# Save as <chart>/templates/debug-skills/<app>-<short-cause>.yaml (Helm)
-# or <kustomize-base>/debug-skills/<app>-<short-cause>.yaml (Kustomize).
+# Save as <chart>/templates/debug-skills/<filename>.yaml (Helm)
+# or <kustomize-base>/debug-skills/<filename>.yaml (Kustomize).
+#
+# Filename convention:
+#   * single-variant CM      → <app>-<short-cause>.yaml (orders-api-db-timeout.yaml)
+#   * multi-variant family CM → <app>-<family>.yaml     (orders-api-postgres.yaml)
 #
 # The yoke.dev/debug-skill=true label is the only registration step.
 # At runtime, the k8s-debug-skills triage skill discovers this ConfigMap
 # by that label and reads data.meta to decide whether it applies.
+#
+# This file shows the SINGLE-VARIANT form. A MULTI-VARIANT example
+# (multiple related errors in one CM, grouped by diagnosis family) is
+# appended at the bottom — uncomment whichever block you need.
 
 apiVersion: v1
 kind: ConfigMap
@@ -66,3 +74,69 @@ data:
     Safe next step: REPLACE with a single read-only diagnostic (a `kubectl get`,
     a log tail, a health endpoint check). Never a `kubectl delete`, `apply`,
     `patch`, `scale`, `rollout`, or any mutating command.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MULTI-VARIANT EXAMPLE (commented out — adapt instead of the block above
+# when you are grouping several related errors into one CM by family).
+#
+# Group when: errors share kind / source / explanation and a single body
+# can cover them with one section per variant. Split into separate CMs
+# when likely causes, safe next step, or matcher precision would diverge.
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# apiVersion: v1
+# kind: ConfigMap
+# metadata:
+#   name: orders-api-postgres
+#   namespace: orders
+#   labels:
+#     yoke.dev/debug-skill: "true"
+#     app.kubernetes.io/name: orders-api
+# data:
+#   meta: |
+#     description: orders-api postgres connectivity failures
+#     selector:
+#       labels:
+#         app.kubernetes.io/name: orders-api
+#       image: "myregistry/orders-api(:|$)"
+#     matchers:
+#       - log: "connection refused.*postgres"   # variant: connection-refused
+#       - log: "dial tcp .*: i/o timeout"       # variant: i-o-timeout
+#       - log: "FATAL: password authentication" # variant: auth-failed
+#       - event: BackOff                        # variant: connection-refused (events too)
+#   body: |
+#     # orders-api: postgres connectivity
+#
+#     The pod cannot talk to its Postgres instance. The exact failure mode
+#     depends on which matcher fired — see the variant section below.
+#
+#     ## Variant: connection-refused
+#
+#     Triggered when log matches: `connection refused.*postgres` or event reason `BackOff`.
+#
+#     Likely causes:
+#     1. The `orders-db` Service has no ready endpoints.
+#     2. The Postgres pod is in CrashLoopBackOff.
+#
+#     Safe next step: `kubectl get endpoints -n orders orders-db`.
+#
+#     ## Variant: i-o-timeout
+#
+#     Triggered when log matches: `dial tcp .*: i/o timeout`.
+#
+#     Likely causes:
+#     1. NetworkPolicy `db-allowlist` is rejecting this pod's labels.
+#     2. The DB Service IP changed and the app cached the old one.
+#
+#     Safe next step: `kubectl get networkpolicy -n orders -o yaml | grep -A3 db-allowlist`.
+#
+#     ## Variant: auth-failed
+#
+#     Triggered when log matches: `FATAL: password authentication`.
+#
+#     Likely causes:
+#     1. `DATABASE_URL` secret was rotated but pods not restarted.
+#     2. The DB user was dropped or its grants revoked.
+#
+#     Safe next step: `kubectl get secret -n orders orders-db-creds -o jsonpath='{.metadata.resourceVersion}'`
+#     and compare with the pod's start time.

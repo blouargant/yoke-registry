@@ -8,11 +8,15 @@ metadata:
 
 # Kubernetes Debug-Skill Chart Setup
 
-Debug skills (see [k8s-debug-skill-author](../k8s-debug-skill-author/SKILL.md)
-and runtime
-[k8s-debug-skills](../../DevOps/k8s-debug-skills/SKILL.md)) match a failing
-pod against a `selector` block. If the pod's labels don't carry what the
-selector expects, the skill is invisible — no matter how good its body is.
+Debug skills (authored via
+[k8s-debug-skill-author](../k8s-debug-skill-author/SKILL.md)) match a
+failing pod against a `selector` block. If the pod's labels don't carry
+what the selector expects, the skill is invisible — no matter how good
+its body is.
+
+> The runtime triage half that consumes these ConfigMaps lives in a
+> separate agent profile (DevOps / SRE). A coding agent does not need
+> it loaded to prepare a chart.
 
 This skill walks a developer through making their chart "debug-skill ready":
 the right labels on the right objects, a Helm helper to keep them
