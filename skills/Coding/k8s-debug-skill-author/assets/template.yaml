@@ -14,8 +14,10 @@ metadata:
   namespace: REPLACE-app-namespace
   labels:
     yoke.dev/debug-skill: "true"
-    # Keep the app label too — useful for kubectl filtering, optional for discovery.
+    # Keep the canonical app label on the CM too — useful for kubectl filtering.
     app.kubernetes.io/name: REPLACE-app
+    # See ../../k8s-debug-skill-chart-setup/SKILL.md for the labels your
+    # Deployments and pod templates must carry for selectors to match.
 data:
   # ---------------------------------------------------------------------------
   # meta — the discovery hint. Loaded for every candidate during Phase 1
@@ -24,10 +26,14 @@ data:
   meta: |
     description: one-line summary of when this skill applies
 
-    # Hard filter on the failing pod's labels. Must include `app:`.
+    # Hard filter — at least ONE of `labels` or `image` must be set. When both
+    # are present, BOTH must match (AND). Prefer setting both: labels for
+    # quick discovery, image for stability against label drift.
     selector:
-      app: REPLACE-app
-      # component: api          # optional, narrows further
+      labels:
+        app.kubernetes.io/name: REPLACE-app
+        # app.kubernetes.io/component: api    # optional, narrows further
+      image: "REPLACE-registry/REPLACE-app(:|$)"   # regex; matches any container image
 
     # Optional. Drop the skill if the pod's image tag is outside this range.
     # applies_to: ">=2.4.0 <3.0.0"

@@ -1,0 +1,73 @@
+# Reference Deployment showing where the canonical labels must appear
+# for debug-skill selectors to reliably match the resulting pods.
+#
+# Three places matter:
+#
+#   1. .metadata.labels                   — for operators filtering with kubectl
+#   2. .spec.selector.matchLabels         — IMMUTABLE, must stay stable across releases
+#   3. .spec.template.metadata.labels     — what pods actually carry; matched by debug skills
+#
+# The Helm form (right column) factors all three through the helpers from _helpers.tpl,
+# keeping them in lockstep automatically.
+
+# ── Raw manifest form ──────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-api
+  namespace: orders
+  labels:
+    app.kubernetes.io/name: orders-api
+    app.kubernetes.io/instance: orders-api-prod
+    app.kubernetes.io/component: api
+    app.kubernetes.io/version: "2.4.1"
+    app.kubernetes.io/part-of: orders-platform
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      # Immutable subset only — never include /version here.
+      app.kubernetes.io/name: orders-api
+      app.kubernetes.io/instance: orders-api-prod
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        # MUST be a superset of matchLabels. Pods carry these at runtime,
+        # so this is what debug-skill `selector.labels` will match against.
+        app.kubernetes.io/name: orders-api
+        app.kubernetes.io/instance: orders-api-prod
+        app.kubernetes.io/component: api
+        app.kubernetes.io/version: "2.4.1"
+        app.kubernetes.io/part-of: orders-platform
+    spec:
+      containers:
+        - name: orders-api
+          image: myregistry/orders-api:2.4.1   # debug-skill `selector.image` matches against this
+          ports:
+            - containerPort: 8080
+
+---
+# ── Helm form (recommended) ────────────────────────────────────────────────────
+# Drop ../_helpers.tpl into your templates/ dir and rename the helper prefix
+# to match Chart.Name; this template then stays a few lines long forever.
+#
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: {{ include "mychart.fullname" . }}
+#   labels: {{- include "mychart.labels" . | nindent 4 }}
+# spec:
+#   replicas: {{ .Values.replicaCount }}
+#   selector:
+#     matchLabels: {{- include "mychart.selectorLabels" . | nindent 6 }}
+#   template:
+#     metadata:
+#       labels: {{- include "mychart.labels" . | nindent 8 }}
+#     spec:
+#       containers:
+#         - name: {{ .Chart.Name }}
+#           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+#           ports:
+#             - containerPort: {{ .Values.service.port }}
