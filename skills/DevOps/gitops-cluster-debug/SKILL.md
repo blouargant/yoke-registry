@@ -26,7 +26,7 @@ root causes.
 - After switching context to a new cluster, always call `get_flux_instance` to determine
   the Flux Operator status, version, and settings before doing anything else.
 - When creating or updating resources on the cluster, generate a Kubernetes YAML manifest
-  and call the `apply_kubernetes_resource` tool. Do not apply resources unless explicitly
+  and call the `apply_kubernetes_manifest` tool. Do not apply resources unless explicitly
   requested by the user. Before generating any YAML manifest, read the relevant OpenAPI
   schema from `assets/schemas/` to verify the exact field names
   and nesting. Schema files follow the naming convention `{kind}-{group}-{version}.json`
