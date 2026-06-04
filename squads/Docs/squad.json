@@ -1,0 +1,11 @@
+{
+    "name": "Docs",
+    "description": "Documentation and localisation squad: write docs grounded in code (doc_writer), condense long content (summariser), localise strings/catalogs (translator), with the web agent for reference retrieval.",
+    "leader": "leader",
+    "members": [
+        "doc_writer",
+        "summariser",
+        "translator",
+        "web_agent"
+    ]
+}

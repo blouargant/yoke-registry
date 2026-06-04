@@ -1,0 +1,10 @@
+{
+    "name": "Ops",
+    "description": "Infrastructure and incident-triage squad: inspect and operate clusters/services via CLIs and MCP (devops), query and explain databases (db_agent), with the investigator for read-only evidence.",
+    "leader": "leader",
+    "members": [
+        "investigator",
+        "devops",
+        "db_agent"
+    ]
+}

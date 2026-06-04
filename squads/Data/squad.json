@@ -1,0 +1,10 @@
+{
+    "name": "Data",
+    "description": "Data-analysis squad: parse, aggregate, and report on structured data and logs (data_analyst), with the investigator for locating sources and the summariser for briefing the findings.",
+    "leader": "leader",
+    "members": [
+        "data_analyst",
+        "investigator",
+        "summariser"
+    ]
+}

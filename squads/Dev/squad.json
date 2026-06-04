@@ -1,0 +1,14 @@
+{
+    "name": "Dev",
+    "description": "Software-engineering squad: implement, review, test, debug, and refactor code. Coder/test_writer/refactorer fan out in parallel; investigator gathers read-only evidence and git_agent handles branch/commit hygiene.",
+    "leader": "leader",
+    "members": [
+        "investigator",
+        "coder",
+        "reviewer",
+        "test_writer",
+        "debugger",
+        "refactorer",
+        "git_agent"
+    ]
+}
