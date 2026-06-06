@@ -1,26 +1,26 @@
 {
-  "always_allow": [
-    {
-      "pattern": "\"command\"\\s*:\\s*\"\\s*kubectl\\s+get\\s+(configmaps?|cm)\\b[^\"]*\\s-l\\s+yoke\\.dev/debug-skill=true\\b",
-      "reason": "read-only listing of debug-skill ConfigMaps by label"
-    },
-    {
-      "pattern": "\"command\"\\s*:\\s*\"\\s*kubectl\\s+(get|describe)\\s+(configmaps?|cm)\\b",
-      "reason": "read-only kubectl get/describe configmaps for skill inspection"
-    },
-    {
-      "pattern": "\"command\"\\s*:\\s*\"\\s*kubectl\\s+config\\s+(current-context|view)\\b",
-      "reason": "confirm cluster context before searching for skills"
-    }
-  ],
-  "ask_user": [
-    {
-      "pattern": "\\bkubectl\\s+(apply|delete|patch|edit|create|replace|annotate|label)\\s+(configmaps?|cm)\\b",
-      "reason": "modifying ConfigMaps is out of scope for this skill — confirm intent"
-    },
-    {
-      "pattern": "\\bkubectl\\s+--context\\s",
-      "reason": "explicit --context selects a non-default cluster — confirm the target"
-    }
-  ]
+  "permissions": {
+    "allow": [
+      "Bash(kubectl get configmaps *)",
+      "Bash(kubectl get configmap *)",
+      "Bash(kubectl get cm *)",
+      "Bash(kubectl describe configmaps *)",
+      "Bash(kubectl describe configmap *)",
+      "Bash(kubectl describe cm *)",
+      "Bash(kubectl config current-context *)",
+      "Bash(kubectl config view *)"
+    ],
+    "ask": [
+      {
+        "regex": "\\bkubectl\\s+(apply|delete|patch|edit|create|replace|annotate|label)\\s+(configmaps?|cm)\\b",
+        "reason": "modifying ConfigMaps is out of scope for this skill — confirm intent",
+        "tools": ["Bash"]
+      },
+      {
+        "regex": "\\bkubectl\\s+--context\\s",
+        "reason": "explicit --context selects a non-default cluster — confirm the target",
+        "tools": ["Bash"]
+      }
+    ]
+  }
 }
